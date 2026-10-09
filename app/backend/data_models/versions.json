@@ -1,0 +1,32 @@
+{
+    "title": "versions",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "autoincrement": true,
+            "primary_key": true
+        },
+        "user_id": {
+            "type": "string"
+        },
+        "project_id": {
+            "type": "integer"
+        },
+        "instruction": {
+            "type": "string"
+        },
+        "code": {
+            "type": "string"
+        },
+        "summary": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "project_id",
+        "code"
+    ]
+}

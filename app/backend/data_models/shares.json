@@ -1,0 +1,28 @@
+{
+    "title": "shares",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "autoincrement": true,
+            "primary_key": true
+        },
+        "title": {
+            "type": "string"
+        },
+        "code": {
+            "type": "string"
+        },
+        "project_id": {
+            "type": "integer"
+        },
+        "views": {
+            "type": "integer"
+        }
+    },
+    "required": [
+        "id",
+        "title",
+        "code"
+    ]
+}

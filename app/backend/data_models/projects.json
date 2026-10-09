@@ -1,0 +1,25 @@
+{
+    "title": "projects",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "autoincrement": true,
+            "primary_key": true
+        },
+        "user_id": {
+            "type": "string"
+        },
+        "name": {
+            "type": "string"
+        },
+        "prompt": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "name"
+    ]
+}
