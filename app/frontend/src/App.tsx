@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Toaster } from '@/components/ui/sonner';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -12,6 +13,22 @@ import AuthError from './pages/AuthError';
 
 const queryClient = new QueryClient();
 
+const APP_TITLE = 'Atoms Demo';
+
+const useForcedTitle = () => {
+  useEffect(() => {
+    const apply = () => {
+      if (document.title !== APP_TITLE) document.title = APP_TITLE;
+    };
+    apply();
+    const titleEl = document.querySelector('title');
+    const observer = new MutationObserver(apply);
+    if (titleEl) observer.observe(titleEl, { childList: true });
+    observer.observe(document.head, { childList: true });
+    return () => observer.disconnect();
+  }, []);
+};
+
 const AppRoutes = () => (
   <Routes>
     <Route path="/" element={<Index />} />
@@ -24,7 +41,9 @@ const AppRoutes = () => (
   </Routes>
 );
 
-const App = () => (
+const App = () => {
+  useForcedTitle();
+  return (
   <QueryClientProvider client={queryClient}>
     {/* MODULE_PROVIDERS_START */}
     {/* MODULE_PROVIDERS_END */}
@@ -36,7 +55,8 @@ const App = () => (
     </TooltipProvider>
     {/* MODULE_PROVIDERS_CLOSE */}
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;
 export { AppRoutes };
