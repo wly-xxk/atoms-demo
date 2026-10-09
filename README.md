@@ -22,7 +22,7 @@ Atoms Demo 是一个 "Vibe Coding" 应用生成器：用户用自然语言描述
 
 - **前端**：Vite + React 18 + TypeScript + Tailwind CSS + shadcn/ui
 - **后端**：Atoms Cloud（FastAPI + PostgreSQL），提供 Auth / Database / AI 能力
-- **AI 模型**：`claude-opus-4.6`，通过 `client.ai.gentxt` 流式调用
+- **AI 模型**：用户自配 API Key，浏览器直连 OpenAI 兼容接口流式生成。内置 OpenAI、DeepSeek、Kimi、通义千问、智谱 GLM、硅基流动、OpenRouter 及自定义地址；配置仅保存在本地浏览器
 - **SDK**：`@metagptx/web-sdk`
 
 ## 目录结构
@@ -92,7 +92,7 @@ pnpm run build    # 生产构建
 
 ## 使用流程
 
-1. 点击右上角登录。
+1. 点击右上角登录，再点「配置 Key」选择平台并填写自己的 API Key（可先测试连接）。
 2. 在首页输入框描述想要的应用，或点击示例胶囊快速填入。
 3. 按 Enter 发送，等待 AI 生成（通常几十秒），过程中可看到已生成的字符数。
 4. 生成完成后进入工作台：左侧是对话与版本记录，右侧可切换「预览 / 代码」。

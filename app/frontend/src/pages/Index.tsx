@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { createClient } from '@metagptx/web-sdk';
 import { toast } from 'sonner';
-import { ArrowUp, Check, Code2, Copy, Download, Eye, Loader2, LogIn, Pencil, Plus, RotateCcw, Share2, Terminal, Trash2 } from 'lucide-react';
+import { ArrowUp, Check, Code2, Copy, Download, Eye, KeyRound, Loader2, LogIn, Pencil, Plus, RotateCcw, Share2, Terminal, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ApiKeyDialog from '@/components/ApiKeyDialog';
+import { loadSettings, LlmSettings, streamChat } from '@/lib/llm';
 
 const client = createClient();
-const MODEL = 'claude-opus-4.6';
 
 type Project = { id: number; name: string; prompt?: string };
 type Version = { id: number; project_id: number; instruction?: string; code: string; summary?: string };
@@ -51,7 +52,10 @@ export default function Index() {
   const [sharing, setSharing] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [copied, setCopied] = useState(false);
+  const [llm, setLlm] = useState<LlmSettings>(() => loadSettings());
+  const [keyOpen, setKeyOpen] = useState(false);
   const pending = useRef('');
+  const hasKey = !!llm.apiKey.trim();
 
   useEffect(() => {
     client.auth.me().then((r) => setAuth(r?.data ? 'in' : 'out')).catch(() => setAuth('out'));
@@ -94,6 +98,11 @@ export default function Index() {
       client.auth.toLogin();
       return;
     }
+    if (!hasKey) {
+      setKeyOpen(true);
+      toast.info('请先配置你的 OpenAI API Key');
+      return;
+    }
     setBusy(true);
     setStream('');
     setTab('preview');
@@ -134,26 +143,18 @@ export default function Index() {
     };
 
     try {
-      await client.ai.gentxt({
-        model: MODEL,
-        stream: true,
-        messages: [
+      const full = await streamChat(
+        llm,
+        [
           { role: 'system', content: SYSTEM },
           { role: 'user', content: userMsg },
         ],
-        onChunk: (c: { content?: string }) => {
-          pending.current += c.content ?? '';
+        (delta) => {
+          pending.current += delta;
           setStream(pending.current);
         },
-        onComplete: (r: { content?: string }) => {
-          void finish(r?.content || pending.current);
-        },
-        onError: (e: { message?: string }) => {
-          setBusy(false);
-          setStream('');
-          toast.error(e?.message || '生成失败，请重试');
-        },
-      });
+      );
+      await finish(full || pending.current);
     } catch (e: unknown) {
       setBusy(false);
       setStream('');
@@ -276,6 +277,8 @@ export default function Index() {
   );
 
   const header = (
+    <>
+    <ApiKeyDialog open={keyOpen} onOpenChange={setKeyOpen} value={llm} onSaved={setLlm} />
     <header className="mx-auto flex h-16 max-w-[1400px] items-center justify-between border-b border-border/60 px-5">
       <button onClick={newProject} className="flex items-center gap-2.5" aria-label="返回首页">
         <Logo />
@@ -283,9 +286,12 @@ export default function Index() {
       </button>
       <div className="flex items-center gap-4">
         <span className="hidden font-mono text-[11px] text-muted-foreground sm:inline">
-          <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-primary align-middle" />
-          引擎在线 · {MODEL}
+          <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${hasKey ? 'bg-primary' : 'bg-destructive'}`} />
+          {hasKey ? `已连接 · ${llm.model}` : '未配置 API Key'}
         </span>
+        <Button variant="outline" size="sm" className="rounded-lg !bg-transparent" onClick={() => setKeyOpen(true)}>
+          <KeyRound className="mr-1 h-3.5 w-3.5" /> {hasKey ? 'API 设置' : '配置 Key'}
+        </Button>
         {auth === 'out' && (
           <Button onClick={() => client.auth.toLogin()} className="rounded-lg font-medium">
             <LogIn className="mr-1 h-4 w-4" /> 登录开始创作
@@ -293,6 +299,7 @@ export default function Index() {
         )}
       </div>
     </header>
+    </>
   );
 
   const showWorkspace = current || busy;
@@ -318,6 +325,14 @@ export default function Index() {
               <p className="mx-auto mt-5 max-w-xl text-[15px] leading-relaxed text-muted-foreground">
                 用一句话描述需求，AI 实时生成完整可运行的代码。对话即迭代，每个版本自动存档，随时回滚与导出。
               </p>
+              {auth === 'in' && !hasKey && (
+                <button
+                  onClick={() => setKeyOpen(true)}
+                  className="mx-auto mt-8 flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm hover:bg-primary/20"
+                >
+                  <KeyRound className="h-4 w-4 text-primary" /> 先配置你的 OpenAI API Key，即可开始生成
+                </button>
+              )}
               <div className="mt-10 text-left">{composer}</div>
               <div className="mt-4 flex flex-wrap justify-center gap-2">
                 {EXAMPLES.map((ex) => (
@@ -451,7 +466,7 @@ export default function Index() {
             ))}
             {busy && (
               <li className="flex items-center gap-2 font-mono text-xs text-primary">
-                <Loader2 className="h-4 w-4 animate-spin" /> 正在生成… {stream.length} 字符
+                <Loader2 className="h-4 w-4 animate-spin" /> 正在生成代码，通常需要 30–90 秒…
               </li>
             )}
           </ol>
