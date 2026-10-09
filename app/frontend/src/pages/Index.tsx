@@ -4,7 +4,7 @@ import { toast } from 'sonner';
 import { ArrowUp, Check, Code2, Copy, Download, Eye, KeyRound, Loader2, LogIn, Pencil, Plus, RotateCcw, Share2, Terminal, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import ApiKeyDialog from '@/components/ApiKeyDialog';
-import { loadSettings, LlmSettings, streamChat } from '@/lib/llm';
+import { DEFAULT_SETTINGS, loadSettings, LlmSettings, saveSettings, streamChat } from '@/lib/llm';
 
 const client = createClient();
 
@@ -54,6 +54,7 @@ export default function Index() {
   const [copied, setCopied] = useState(false);
   const [llm, setLlm] = useState<LlmSettings>(() => loadSettings());
   const [keyOpen, setKeyOpen] = useState(false);
+  const [settingsId, setSettingsId] = useState<number | null>(null);
   const pending = useRef('');
   const hasKey = !!llm.apiKey.trim();
 
@@ -68,6 +69,67 @@ export default function Index() {
       .then((r) => setProjects(r.data.items))
       .catch(() => toast.error('项目列表加载失败'));
   }, [auth]);
+
+  useEffect(() => {
+    if (auth !== 'in') return;
+    (async () => {
+      try {
+        const r = await client.entities.llm_settings.query({ sort: '-updated_at', limit: 1 });
+        const row = r.data.items?.[0];
+        if (row) {
+          const remote: LlmSettings = {
+            provider: row.provider || 'custom',
+            apiKey: row.api_key,
+            baseUrl: row.base_url,
+            model: row.model,
+          };
+          setSettingsId(row.id);
+          setLlm(remote);
+          saveSettings(remote);
+          return;
+        }
+        const local = loadSettings();
+        if (local.apiKey.trim()) {
+          const c = await client.entities.llm_settings.create({
+            data: { provider: local.provider, api_key: local.apiKey, base_url: local.baseUrl, model: local.model },
+          });
+          setSettingsId(c.data.id);
+        }
+      } catch {
+        toast.error('读取账号中的 API 配置失败，暂时使用本地配置');
+      }
+    })();
+  }, [auth]);
+
+  const persistSettings = async (next: LlmSettings) => {
+    setLlm(next);
+    if (auth !== 'in') return;
+    try {
+      if (!next.apiKey.trim()) {
+        if (settingsId) await client.entities.llm_settings.delete({ id: String(settingsId) });
+        setSettingsId(null);
+        return;
+      }
+      const data = { provider: next.provider, api_key: next.apiKey, base_url: next.baseUrl, model: next.model };
+      if (settingsId) {
+        await client.entities.llm_settings.update({ id: String(settingsId), data });
+      } else {
+        const c = await client.entities.llm_settings.create({ data });
+        setSettingsId(c.data.id);
+      }
+    } catch {
+      toast.error('同步到账号失败，配置仅保存在本机');
+    }
+  };
+
+  const openKeyDialog = () => {
+    if (auth !== 'in') {
+      toast.info('请先登录，API Key 会保存到你的账号');
+      client.auth.toLogin();
+      return;
+    }
+    setKeyOpen(true);
+  };
 
   const openProject = async (p: Project) => {
     setCurrent(p);
@@ -278,7 +340,7 @@ export default function Index() {
 
   const header = (
     <>
-    <ApiKeyDialog open={keyOpen} onOpenChange={setKeyOpen} value={llm} onSaved={setLlm} />
+    <ApiKeyDialog open={keyOpen} onOpenChange={setKeyOpen} value={llm} onSaved={(v) => void persistSettings(v ?? DEFAULT_SETTINGS)} />
     <header className="mx-auto flex h-16 max-w-[1400px] items-center justify-between border-b border-border/60 px-5">
       <button onClick={newProject} className="flex items-center gap-2.5" aria-label="返回首页">
         <Logo />
@@ -289,7 +351,7 @@ export default function Index() {
           <span className={`mr-1.5 inline-block h-1.5 w-1.5 rounded-full align-middle ${hasKey ? 'bg-primary' : 'bg-destructive'}`} />
           {hasKey ? `已连接 · ${llm.model}` : '未配置 API Key'}
         </span>
-        <Button variant="outline" size="sm" className="rounded-lg !bg-transparent" onClick={() => setKeyOpen(true)}>
+        <Button variant="outline" size="sm" className="rounded-lg !bg-transparent" onClick={openKeyDialog}>
           <KeyRound className="mr-1 h-3.5 w-3.5" /> {hasKey ? 'API 设置' : '配置 Key'}
         </Button>
         {auth === 'out' && (
@@ -327,7 +389,7 @@ export default function Index() {
               </p>
               {auth === 'in' && !hasKey && (
                 <button
-                  onClick={() => setKeyOpen(true)}
+                  onClick={openKeyDialog}
                   className="mx-auto mt-8 flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/10 px-4 py-2 text-sm hover:bg-primary/20"
                 >
                   <KeyRound className="h-4 w-4 text-primary" /> 先配置你的 OpenAI API Key，即可开始生成

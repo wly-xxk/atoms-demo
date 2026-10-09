@@ -1,0 +1,33 @@
+{
+    "title": "llm_settings",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "autoincrement": true,
+            "primary_key": true
+        },
+        "user_id": {
+            "type": "string"
+        },
+        "provider": {
+            "type": "string"
+        },
+        "api_key": {
+            "type": "string"
+        },
+        "base_url": {
+            "type": "string"
+        },
+        "model": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "api_key",
+        "base_url",
+        "model"
+    ]
+}

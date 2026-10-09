@@ -18,7 +18,7 @@
 把"描述需求 → 看到可用的应用"这条链路压缩到一分钟内，且结果是真实可运行的代码，而非静态效果图。
 
 ### 1.4 范围边界
-**本版包含**：自然语言生成、实时预览、对话式迭代、版本回滚、项目管理（重命名/删除）、发布公开分享链接、HTML 导出与源码复制。
+**本版包含**：自然语言生成、实时预览、对话式迭代、版本回滚、项目管理（重命名/删除）、发布公开分享链接、HTML 导出与源码复制、用户自配多平台模型 Key（跟随账号）。
 **本版不含**：多文件工程、容器沙箱构建、自动修错闭环、团队协作、计费。
 
 ---
@@ -26,7 +26,7 @@
 ## 二、用户流程
 
 ```
-未登录 ──浏览首页──> 点击登录 ──> OIDC 回调 ──> 已登录
+未登录 ──浏览首页──> 点击登录 ──> OIDC 回调 ──> 已登录 ──> 读取账号中的 Key（无则提示配置）
                                                   │
                                                   ▼
           输入需求 / 点击示例  ──>  AI 流式生成  ──>  落库（project + version）
@@ -60,13 +60,17 @@
                 │ @metagptx/web-sdk
                 ├─ client.auth.*        认证
                 ├─ client.entities.*    数据 CRUD
-                └─ client.ai.gentxt     AI 流式生成
+                └─ client.entities.llm_settings  用户 Key 配置
+                │
+                │ fetch（浏览器直连，SSE 流式）
+                ▼
+        用户所选平台的 /chat/completions（OpenAI / DeepSeek / Kimi / 通义 / 智谱 / 硅基流动 / OpenRouter / 自定义）
                 │
 ┌───────────────▼─────────────────────────────────┐
 │  Atoms Cloud (FastAPI + PostgreSQL)              │
 │  ├─ 内置用户体系与 OIDC 登录                      │
 │  ├─ 自动生成的实体 CRUD 接口（按 user_id 隔离）    │
-│  └─ AI Hub：claude-opus-4.6                      │
+│  └─ 不再调用平台 AI，生成费用由用户自己的 Key 承担 │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -119,29 +123,62 @@
 
 分享采用**快照**语义：发布后再修改项目不会影响已发出的链接，需要更新时重新发布生成新链接。
 
-projects 与 versions 为 `create_only=true`，数据按用户隔离，用户只能读写自己的记录。版本按 `created_at` 升序构成时间线。
+### llm_settings
+
+| 字段 | 类型 | 必填 | 说明 |
+|---|---|---|---|
+| id | integer | 是 | 主键，自增 |
+| user_id | string | 是 | 所属用户，系统注入与校验 |
+| provider | string | 否 | 平台标识（openai / deepseek / moonshot / dashscope / zhipu / siliconflow / openrouter / custom） |
+| api_key | string | 是 | 用户自己的 API Key |
+| base_url | string | 是 | 接口地址 |
+| model | string | 是 | 模型名 |
+
+每个用户只保留一条记录，读取时取最近更新的一条。
+
+projects、versions、llm_settings 为 `create_only=true`，数据按用户隔离，用户只能读写自己的记录。版本按 `created_at` 升序构成时间线。
 
 ---
 
 ## 五、AI 生成设计
 
 ### 5.1 调用方式
-前端 `client.ai.gentxt`，`stream: true`，模型 `claude-opus-4.6`。选择前端直连而非后端包装，原因是生成内容直接展示给用户，流式输出能显著改善等待体验。
+用户自带 Key，前端通过 `fetch` 直连所选平台 OpenAI 兼容的 `/chat/completions` 接口，`stream: true`，按 SSE 逐行解析 `choices[0].delta.content` 实时展示（`src/lib/llm.ts` 的 `streamChat`）。这样不消耗平台 AI 余额，用户可以自由选择模型和费用。
 
-### 5.2 System Prompt 要点
+### 5.2 平台预设
+| 平台 | 默认接口地址 | 预置模型示例 |
+|---|---|---|
+| OpenAI | https://api.openai.com/v1 | gpt-4o-mini、gpt-4o、gpt-4.1 |
+| DeepSeek | https://api.deepseek.com/v1 | deepseek-chat、deepseek-reasoner |
+| 月之暗面 Kimi | https://api.moonshot.cn/v1 | kimi-k2-0905-preview、moonshot-v1-32k |
+| 阿里云百炼 | https://dashscope.aliyuncs.com/compatible-mode/v1 | qwen-plus、qwen-max、qwen3-coder-plus |
+| 智谱 GLM | https://open.bigmodel.cn/api/paas/v4 | glm-4.6、glm-4-plus、glm-4-flash |
+| 硅基流动 | https://api.siliconflow.cn/v1 | DeepSeek-V3、Qwen2.5-72B、GLM-4.6 |
+| OpenRouter | https://openrouter.ai/api/v1 | claude-sonnet-4.5、gemini-2.5-pro 等 |
+| 自定义 | 用户填写 | 用户填写 |
+
+选择平台后自动填入地址和首个模型，并提供「获取 Key」链接；模型可点选也可手输。「测试连接」发送 `max_tokens: 1` 的极小请求校验 Key、地址和模型。
+
+### 5.3 Key 的存储与同步
+1. 配置入口要求先登录；未登录点击会跳转登录。
+2. 登录后读取 `llm_settings` 中该用户的配置，写入状态并在本地浏览器缓存一份。
+3. 账号中没有配置、但本地已有 Key 时，自动迁移到账号（解决登录前后需要重复配置的问题）。
+4. 保存时有记录则更新、无记录则创建；清除配置则删除记录。同步失败时提示「仅保存在本机」，不影响当前使用。
+
+### 5.4 System Prompt 要点
 1. 只输出一个 ```html 代码块，前面可附一句不超过 40 字的中文说明；
 2. CSS/JS 全部内联，允许 CDN 引入 Tailwind；
 3. 功能必须真实可交互，数据用 localStorage 持久化，禁止占位文字；
 4. 界面美观、响应式、中文；
 5. 修改请求时基于给出的现有代码输出完整文件。
 
-### 5.3 输出解析
+### 5.5 输出解析
 正则提取 ```html 代码块；若未匹配到则退回整段文本。校验结果必须包含 `<`，否则判为无效并提示重试。代码块前的说明文字截取 120 字作为版本摘要。
 
-### 5.4 错误处理
-- `onError` 与 `catch` 中均重置 `busy` 与 `stream`，确保 UI 不会卡在加载态；
-- 生成无效、保存失败分别给出不同的 toast 提示；
-- 所有失败路径都保留重试入口。
+### 5.6 错误处理
+- 401/403 提示 Key 无效、429 提示频率或额度、404 提示模型或地址错误，网络失败提示检查 Base URL 与跨域；
+- 未配置 Key 时点击生成，自动打开配置弹窗；
+- 所有失败路径都会重置 `busy` 与 `stream`，并保留重试入口。
 
 ---
 
@@ -213,4 +250,5 @@ projects 与 versions 为 `create_only=true`，数据按用户隔离，用户只
 | 无构建校验 | 生成代码可能有运行时错误 | 补自动修错闭环（读报错 → 修复 → 重试，设上限） |
 | 全量代码入上下文 | 代码变大后成本上升、可能超长 | 改为 diff 式编辑，按需检索相关片段 |
 | 无发布能力 | 只能下载 HTML | 对象存储托管 + 公网短链 |
-| 单一模型 | 成本不可控 | 按任务复杂度做模型路由 |
+| Key 明文存库 | 数据库泄露时 Key 暴露 | 服务端加密存储，或改为后端代理调用 |
+| 浏览器直连依赖 CORS | 部分自建服务无法直接使用 | 增加后端转发代理 |

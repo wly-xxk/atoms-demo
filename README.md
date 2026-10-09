@@ -17,12 +17,14 @@ Atoms Demo 是一个 "Vibe Coding" 应用生成器：用户用自然语言描述
 | 项目管理 | 登录后查看、打开、重命名、删除自己的项目（按用户隔离） |
 | 发布分享 | 一键生成公开链接 `/s/:id`，无需登录即可访问，带浏览量统计 |
 | 导出 | 将当前版本下载为独立的 `.html` 文件，或一键复制源码 |
+| 自配模型 Key | 使用你自己的 API Key 生成，支持 OpenAI、DeepSeek、Kimi、通义千问、智谱 GLM、硅基流动、OpenRouter 及任意 OpenAI 兼容地址；可一键测试连接 |
+| Key 跟随账号 | Key 保存在账号中，换浏览器/设备登录自动带上；登录前本地填写的 Key 登录后自动迁移 |
 
 ## 技术栈
 
 - **前端**：Vite + React 18 + TypeScript + Tailwind CSS + shadcn/ui
 - **后端**：Atoms Cloud（FastAPI + PostgreSQL），提供 Auth / Database / AI 能力
-- **AI 模型**：用户自配 API Key，浏览器直连 OpenAI 兼容接口流式生成。内置 OpenAI、DeepSeek、Kimi、通义千问、智谱 GLM、硅基流动、OpenRouter 及自定义地址；配置仅保存在本地浏览器
+- **AI 模型**：用户自配 API Key，浏览器直连 OpenAI 兼容的 `/chat/completions` 接口流式生成（`src/lib/llm.ts`）。内置 7 个平台预设 + 自定义地址；配置保存在用户账号（`llm_settings` 表），本地浏览器留一份缓存
 - **SDK**：`@metagptx/web-sdk`
 
 ## 目录结构
@@ -31,6 +33,9 @@ Atoms Demo 是一个 "Vibe Coding" 应用生成器：用户用自然语言描述
 app/
 ├── frontend/
 │   ├── src/pages/Index.tsx      # 首页 + 工作台（核心页面）
+│   ├── src/pages/SharePage.tsx  # 公开分享页 /s/:id
+│   ├── src/lib/llm.ts           # 平台预设 + 流式调用 OpenAI 兼容接口
+│   ├── src/components/ApiKeyDialog.tsx  # 模型服务配置弹窗
 │   ├── src/components/ui/       # shadcn/ui 组件
 │   ├── src/index.css            # 主题 CSS 变量
 │   └── DESIGN.md                # 视觉设计规范
@@ -75,6 +80,17 @@ docs/
 | project_id | integer | 来源项目 |
 | views | integer | 浏览次数 |
 
+**llm_settings** — 用户的模型服务配置（按用户隔离，每人一条）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | integer | 主键，自增 |
+| user_id | string | 所属用户（系统维护） |
+| provider | string | 平台标识，如 `openai`、`deepseek`、`custom` |
+| api_key | string | 用户自己的 API Key |
+| base_url | string | 接口地址 |
+| model | string | 模型名 |
+
 以上表均附带自动维护的 `created_at` / `updated_at`。
 
 ## 本地开发
@@ -92,7 +108,7 @@ pnpm run build    # 生产构建
 
 ## 使用流程
 
-1. 点击右上角登录，再点「配置 Key」选择平台并填写自己的 API Key（可先测试连接）。
+1. 点击右上角登录，再点「配置 Key」：选择平台 → 粘贴自己的 API Key → 测试连接 → 保存。只需配置一次，之后跟随账号。
 2. 在首页输入框描述想要的应用，或点击示例胶囊快速填入。
 3. 按 Enter 发送，等待 AI 生成（通常几十秒），过程中可看到已生成的字符数。
 4. 生成完成后进入工作台：左侧是对话与版本记录，右侧可切换「预览 / 代码」。
@@ -103,7 +119,9 @@ pnpm run build    # 生产构建
 
 - 生成的是**单文件 HTML 应用**，而非多文件工程，因此没有依赖安装、沙箱构建和自动修错环节。
 - 预览直接在浏览器 iframe 中运行生成代码（`sandbox` 受限），不依赖独立服务器。
-- 生成与修改需要登录；未登录可浏览首页。
+- 生成、修改与配置 Key 都需要登录；未登录可浏览首页和公开分享页。
+- 浏览器直连模型接口，所选服务需允许跨域（CORS）访问；常见平台可用，自建服务可能需要自行配置。
+- API Key 按用户隔离存储在应用数据库中，**未加密**；生成费用由用户自己的模型账户承担。
 - 每次修改会把完整代码送入模型，代码体量很大时可能受上下文长度影响。
 
 ## 后续规划
